@@ -82,9 +82,14 @@ class InvisibleOverlay(QMainWindow):
         else:
             self.update_label("Listening to call audio...")
 
+    def quit_app(self):
+        """Force kills the application instantly."""
+        os._exit(0)
+
     def setup_hotkeys(self):
         keyboard.add_hotkey('ctrl+shift+h', self.toggle_visibility)
         keyboard.add_hotkey('ctrl+shift+m', self.toggle_mock_mode)
+        keyboard.add_hotkey('ctrl+shift+q', self.quit_app) # <-- Quit hotkey added
 
 def record_system_audio(duration=5, sample_rate=16000):
     """Intercepts audio playing through the default speakers (interviewer's voice)."""
@@ -148,7 +153,9 @@ def ai_processing_thread(signaler, overlay):
             if audio_data is not None:
                 # Calculate volume to ensure someone is actually speaking
                 volume = np.linalg.norm(audio_data) / len(audio_data)
-                if volume > 50.0:  # Threshold adjusted for int16 data
+
+                # <-- Volume threshold lowered to 2.0 to catch quiet sources like Google Meet
+                if volume > 2.0:
                     signaler.update_text.emit("Sending to server...")
                     ai_response = process_audio_via_server(audio_data, sample_rate)
 
