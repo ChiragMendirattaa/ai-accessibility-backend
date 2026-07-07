@@ -17,13 +17,16 @@ from PyQt5.QtGui import QFont
 SERVER_URL = "https://ai-accessibility-backend.onrender.com/api/process-audio"
 
 class TranscriptionSignaler(QObject):
-    update_text = pyqtSignal(str)
+    # We now have two separate signals for the UI
+    update_status = pyqtSignal(str)
+    update_answer = pyqtSignal(str)
 
 class InvisibleOverlay(QMainWindow):
     def __init__(self):
         super().__init__()
         self.signaler = TranscriptionSignaler()
-        self.signaler.update_text.connect(self.update_label)
+        self.signaler.update_status.connect(self.set_status)
+        self.signaler.update_answer.connect(self.set_answer)
         self.mock_mode = False
 
         self.setup_ui()
@@ -38,23 +41,25 @@ class InvisibleOverlay(QMainWindow):
             Qt.WindowTransparentForInput
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setGeometry(100, 100, 900, 150)
+        self.setGeometry(100, 100, 900, 200) # Made slightly taller for two lines
 
         self.central_widget = QWidget()
+        self.central_widget.setStyleSheet("background-color: rgba(0, 0, 0, 180); border-radius: 8px;")
         self.layout = QVBoxLayout()
+        self.layout.setContentsMargins(15, 15, 15, 15)
 
-        self.text_label = QLabel("Connecting to AI Server...", self)
-        self.text_label.setFont(QFont("Arial", 16, QFont.Bold))
-        self.text_label.setStyleSheet("""
-            QLabel {
-                color: #00FF00;
-                background-color: rgba(0, 0, 0, 180);
-                padding: 15px;
-                border-radius: 8px;
-            }
-        """)
-        self.text_label.setWordWrap(True)
-        self.layout.addWidget(self.text_label)
+        # 1. The small status label (Listening, Sending, etc.)
+        self.status_label = QLabel("Connecting to AI Server...", self)
+        self.status_label.setFont(QFont("Arial", 10, QFont.Italic))
+        self.status_label.setStyleSheet("color: #AAAAAA; background: transparent;")
+        self.layout.addWidget(self.status_label)
+
+        # 2. The large answer label (Only for AI text)
+        self.answer_label = QLabel("Waiting for first question...", self)
+        self.answer_label.setFont(QFont("Arial", 16, QFont.Bold))
+        self.answer_label.setStyleSheet("color: #00FF00; background: transparent;")
+        self.answer_label.setWordWrap(True)
+        self.layout.addWidget(self.answer_label)
 
         self.central_widget.setLayout(self.layout)
         self.setCentralWidget(self.central_widget)
@@ -65,9 +70,12 @@ class InvisibleOverlay(QMainWindow):
             hwnd = int(self.winId())
             ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x00000011)
 
-    def update_label(self, text):
+    def set_status(self, text):
         prefix = "[MOCK MODE] " if self.mock_mode else ""
-        self.text_label.setText(f"{prefix}{text}")
+        self.status_label.setText(f"{prefix}{text}")
+
+    def set_answer(self, text):
+        self.answer_label.setText(text)
 
     def toggle_visibility(self):
         if self.isVisible():
@@ -78,38 +86,32 @@ class InvisibleOverlay(QMainWindow):
     def toggle_mock_mode(self):
         self.mock_mode = not self.mock_mode
         if self.mock_mode:
-            self.update_label("Mock interview mode activated.")
+            self.set_status("Mock interview mode activated.")
+            self.set_answer("Simulating responses...")
         else:
-            self.update_label("Listening to call audio...")
+            self.set_status("Listening to call audio...")
+            self.set_answer("Waiting for next question...")
 
     def quit_app(self):
-        """Force kills the application instantly."""
         os._exit(0)
 
     def setup_hotkeys(self):
         keyboard.add_hotkey('ctrl+shift+h', self.toggle_visibility)
         keyboard.add_hotkey('ctrl+shift+m', self.toggle_mock_mode)
-        keyboard.add_hotkey('ctrl+shift+q', self.quit_app) # <-- Quit hotkey added
+        keyboard.add_hotkey('ctrl+shift+q', self.quit_app)
 
 def record_system_audio(duration=5, sample_rate=16000):
-    """Intercepts audio playing through the default speakers (interviewer's voice)."""
     import soundcard as sc
-
     try:
         default_speaker = sc.default_speaker()
-        # include_loopback=True is the magic flag that captures speaker output
         loopback_mic = sc.get_microphone(default_speaker.id, include_loopback=True)
 
         with loopback_mic.recorder(samplerate=sample_rate) as mic:
             data = mic.record(numframes=sample_rate * duration)
-
-            # Convert audio data from float32 to int16 for the .wav file
             mono_data = data[:, 0] if len(data.shape) > 1 else data
             int16_data = np.int16(mono_data * 32767)
             return int16_data, sample_rate
-
     except Exception as e:
-        print(f"System Audio Capture Error: {e}")
         return None, sample_rate
 
 def process_audio_via_server(audio_data, sample_rate):
@@ -128,41 +130,36 @@ def process_audio_via_server(audio_data, sample_rate):
             return response.json().get("suggestion", "")
         else:
             return "Error: Server failed to process audio."
-
-    except requests.exceptions.ConnectionError:
-        return "Error: Cannot connect to the server."
-    except Exception as e:
+    except Exception:
         return "Error communicating with server."
 
 def ai_processing_thread(signaler, overlay):
     time.sleep(1)
-    signaler.update_text.emit("System Audio active. Waiting for call to start...")
+    signaler.update_status.emit("System Audio active.")
 
     while True:
         if overlay.mock_mode:
             time.sleep(4)
             simulated_responses = [
-                "Suggested Answer: Discuss how you structured your React components and managed state.",
-                "Suggested Answer: Mention your implementation of JWT authentication in the Spring Boot backend."
+                "I structured the React components by breaking them down into atomic design principles, ensuring reusability across the application.",
+                "For authentication, I implemented a robust JWT flow in the Spring Boot backend, storing tokens securely in HttpOnly cookies."
             ]
-            signaler.update_text.emit(random.choice(simulated_responses))
+            signaler.update_answer.emit(random.choice(simulated_responses))
         else:
-            # Capture the interviewer's voice from the speakers
             audio_data, sample_rate = record_system_audio(duration=5)
 
             if audio_data is not None:
-                # Calculate volume to ensure someone is actually speaking
                 volume = np.linalg.norm(audio_data) / len(audio_data)
 
-                # <-- Volume threshold lowered to 2.0 to catch quiet sources like Google Meet
                 if volume > 2.0:
-                    signaler.update_text.emit("Sending to server...")
+                    signaler.update_status.emit("Processing audio... Sending to server.")
                     ai_response = process_audio_via_server(audio_data, sample_rate)
 
                     if ai_response:
-                        signaler.update_text.emit(ai_response)
+                        signaler.update_answer.emit(ai_response)
+                        signaler.update_status.emit("Response received. Listening...")
                 else:
-                    signaler.update_text.emit("Listening to call audio...")
+                    signaler.update_status.emit("Listening to call audio...")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

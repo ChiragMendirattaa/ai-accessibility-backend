@@ -42,21 +42,21 @@ async def process_audio(audio_file: UploadFile = File(...)):
         if not user_text:
             return {"suggestion": ""}
 
-        # 3. Llama 3.1: Generate Prompt Answer
+        # 3. Llama 3.1: Generate Professional Answer
         chat_completion = client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a discreet accessibility assistant helping a user during a video call. Based on what they just heard, output exactly one short, actionable sentence to help them respond. Be concise."
+                    "content": "You are an expert interview coach. The user is in a live job interview. Based on the transcribed audio, provide a highly professional, structured, and impressive answer that the user can speak directly. Keep it conversational, impactful, and between 2 to 3 sentences. Do not use introductory filler like 'Here is your answer'."
                 },
                 {
                     "role": "user",
-                    "content": f"The following was just spoken on the call: '{user_text}'"
+                    "content": f"The interviewer just said: '{user_text}'"
                 }
             ],
             model="llama-3.1-8b-instant",
-            temperature=0.5,
-            max_tokens=50
+            temperature=0.6,
+            max_tokens=200
         )
 
         answer = chat_completion.choices[0].message.content
