@@ -3,7 +3,6 @@ import threading
 import time
 import random
 import keyboard
-import soundcard as sc
 from scipy.io import wavfile
 import numpy as np
 import os
@@ -89,6 +88,8 @@ class InvisibleOverlay(QMainWindow):
 
 def record_system_audio(duration=5, sample_rate=16000):
     """Intercepts audio playing through the default speakers (interviewer's voice)."""
+    import soundcard as sc
+
     try:
         default_speaker = sc.default_speaker()
         # include_loopback=True is the magic flag that captures speaker output
