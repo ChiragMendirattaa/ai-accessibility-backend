@@ -50,7 +50,9 @@ class InvisibleOverlay(QMainWindow):
 
         # 1. The small status label (Listening, Sending, etc.)
         self.status_label = QLabel("Connecting to AI Server...", self)
-        self.status_label.setFont(QFont("Arial", 10, QFont.Italic))
+        status_font = QFont("Arial", 10)
+        status_font.setItalic(True)
+        self.status_label.setFont(status_font)
         self.status_label.setStyleSheet("color: #AAAAAA; background: transparent;")
         self.layout.addWidget(self.status_label)
 
