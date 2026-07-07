@@ -3,7 +3,7 @@ import threading
 import time
 import random
 import keyboard
-import sounddevice as sd
+import soundcard as sc
 from scipy.io import wavfile
 import numpy as np
 import os
@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWid
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
 
-# The address of your local FastAPI server
+# The public address of your Render server
 SERVER_URL = "https://ai-accessibility-backend.onrender.com/api/process-audio"
 
 class TranscriptionSignaler(QObject):
@@ -81,51 +81,56 @@ class InvisibleOverlay(QMainWindow):
         if self.mock_mode:
             self.update_label("Mock interview mode activated.")
         else:
-            self.update_label("Listening to microphone...")
+            self.update_label("Listening to call audio...")
 
     def setup_hotkeys(self):
         keyboard.add_hotkey('ctrl+shift+h', self.toggle_visibility)
         keyboard.add_hotkey('ctrl+shift+m', self.toggle_mock_mode)
 
-def record_audio_chunk(duration=5, sample_rate=16000):
+def record_system_audio(duration=5, sample_rate=16000):
+    """Intercepts audio playing through the default speakers (interviewer's voice)."""
     try:
-        recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='int16')
-        sd.wait()
-        return recording, sample_rate
+        default_speaker = sc.default_speaker()
+        # include_loopback=True is the magic flag that captures speaker output
+        loopback_mic = sc.get_microphone(default_speaker.id, include_loopback=True)
+
+        with loopback_mic.recorder(samplerate=sample_rate) as mic:
+            data = mic.record(numframes=sample_rate * duration)
+
+            # Convert audio data from float32 to int16 for the .wav file
+            mono_data = data[:, 0] if len(data.shape) > 1 else data
+            int16_data = np.int16(mono_data * 32767)
+            return int16_data, sample_rate
+
     except Exception as e:
-        print(f"Audio recording error: {e}")
+        print(f"System Audio Capture Error: {e}")
         return None, sample_rate
 
 def process_audio_via_server(audio_data, sample_rate):
-    """Saves audio locally, POSTs it to the FastAPI server, and returns the answer."""
     try:
-        # Save to temporary .wav file
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
             wavfile.write(temp_audio.name, sample_rate, audio_data)
             temp_filename = temp_audio.name
 
-        # Send the file to your FastAPI server
         with open(temp_filename, "rb") as file:
             files = {"audio_file": (temp_filename, file, "audio/wav")}
             response = requests.post(SERVER_URL, files=files)
 
-        os.remove(temp_filename) # Clean up the file
+        os.remove(temp_filename)
 
         if response.status_code == 200:
             return response.json().get("suggestion", "")
         else:
-            print(f"Server returned status {response.status_code}: {response.text}")
             return "Error: Server failed to process audio."
 
     except requests.exceptions.ConnectionError:
-        return "Error: Cannot connect to the server. Is it running?"
+        return "Error: Cannot connect to the server."
     except Exception as e:
-        print(f"Client Error: {e}")
         return "Error communicating with server."
 
 def ai_processing_thread(signaler, overlay):
     time.sleep(1)
-    signaler.update_text.emit("Microphone active. Waiting for speech...")
+    signaler.update_text.emit("System Audio active. Waiting for call to start...")
 
     while True:
         if overlay.mock_mode:
@@ -136,19 +141,20 @@ def ai_processing_thread(signaler, overlay):
             ]
             signaler.update_text.emit(random.choice(simulated_responses))
         else:
-            audio_data, sample_rate = record_audio_chunk(duration=5)
+            # Capture the interviewer's voice from the speakers
+            audio_data, sample_rate = record_system_audio(duration=5)
 
             if audio_data is not None:
-                # Calculate volume to skip processing if the room is quiet
+                # Calculate volume to ensure someone is actually speaking
                 volume = np.linalg.norm(audio_data) / len(audio_data)
-                if volume > 2.0:
+                if volume > 50.0:  # Threshold adjusted for int16 data
                     signaler.update_text.emit("Sending to server...")
                     ai_response = process_audio_via_server(audio_data, sample_rate)
 
                     if ai_response:
                         signaler.update_text.emit(ai_response)
                 else:
-                    signaler.update_text.emit("Listening to microphone...")
+                    signaler.update_text.emit("Listening to call audio...")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
