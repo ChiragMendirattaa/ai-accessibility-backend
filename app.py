@@ -15,7 +15,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
 
 # The address of your local FastAPI server
-SERVER_URL = "http://127.0.0.1:8000/api/process-audio"
+SERVER_URL = "https://ai-accessibility-backend.onrender.com/api/process-audio"
 
 class TranscriptionSignaler(QObject):
     update_text = pyqtSignal(str)
