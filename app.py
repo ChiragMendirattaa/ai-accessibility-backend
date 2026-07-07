@@ -34,37 +34,47 @@ class InvisibleOverlay(QMainWindow):
         self.setup_hotkeys()
 
     def setup_ui(self):
-        self.setWindowFlags(
-            Qt.WindowStaysOnTopHint |
-            Qt.FramelessWindowHint |
-            Qt.Tool |
-            Qt.WindowTransparentForInput
-        )
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setGeometry(100, 100, 900, 200) # Made slightly taller for two lines
+            self.setWindowFlags(
+                Qt.WindowStaysOnTopHint |
+                Qt.FramelessWindowHint |
+                Qt.Tool |
+                Qt.WindowTransparentForInput
+            )
+            self.setAttribute(Qt.WA_TranslucentBackground)
 
-        self.central_widget = QWidget()
-        self.central_widget.setStyleSheet("background-color: rgba(0, 0, 0, 180); border-radius: 8px;")
-        self.layout = QVBoxLayout()
-        self.layout.setContentsMargins(15, 15, 15, 15)
+            # 1. INCREASE HEIGHT: Changed from 200 to 350 to fit longer answers
+            self.setGeometry(100, 100, 900, 350)
 
-        # 1. The small status label (Listening, Sending, etc.)
-        self.status_label = QLabel("Connecting to AI Server...", self)
-        status_font = QFont("Arial", 10)
-        status_font.setItalic(True)
-        self.status_label.setFont(status_font)
-        self.status_label.setStyleSheet("color: #AAAAAA; background: transparent;")
-        self.layout.addWidget(self.status_label)
+            self.central_widget = QWidget()
+            self.central_widget.setStyleSheet("background-color: rgba(0, 0, 0, 180); border-radius: 12px;")
+            self.layout = QVBoxLayout()
 
-        # 2. The large answer label (Only for AI text)
-        self.answer_label = QLabel("Waiting for first question...", self)
-        self.answer_label.setFont(QFont("Arial", 16, QFont.Bold))
-        self.answer_label.setStyleSheet("color: #00FF00; background: transparent;")
-        self.answer_label.setWordWrap(True)
-        self.layout.addWidget(self.answer_label)
+            # 2. INCREASE PADDING: Gives the text more breathing room on the edges
+            self.layout.setContentsMargins(25, 25, 25, 25)
 
-        self.central_widget.setLayout(self.layout)
-        self.setCentralWidget(self.central_widget)
+            # 3. TOP ALIGNMENT: Prevents the text from stretching out of the middle
+            self.layout.setAlignment(Qt.AlignTop)
+
+            # The small status label
+            self.status_label = QLabel("Connecting to AI Server...", self)
+            status_font = QFont("Arial", 10)
+            status_font.setItalic(True)
+            self.status_label.setFont(status_font)
+            self.status_label.setStyleSheet("color: #AAAAAA; background: transparent;")
+            self.layout.addWidget(self.status_label)
+
+            # The large answer label
+            self.answer_label = QLabel("Waiting for first question...", self)
+            self.answer_label.setFont(QFont("Arial", 16, QFont.Bold))
+            self.answer_label.setStyleSheet("color: #00FF00; background: transparent;")
+            self.answer_label.setWordWrap(True)
+
+            # 4. TEXT ALIGNMENT: Forces the words to start at the top-left
+            self.answer_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+            self.layout.addWidget(self.answer_label)
+
+            self.central_widget.setLayout(self.layout)
+            self.setCentralWidget(self.central_widget)
 
     def apply_capture_evasion(self):
         if sys.platform == 'win32':
